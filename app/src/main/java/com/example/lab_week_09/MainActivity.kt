@@ -1,10 +1,12 @@
 package com.example.lab_week_09
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,10 +29,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.room.util.copy
 import com.example.lab_week_09.ui.theme.LAB_WEEK_09Theme
 import com.example.lab_week_09.ui.theme.OnBackgroundItemText
 import com.example.lab_week_09.ui.theme.OnBackgroundTitleText
 import com.example.lab_week_09.ui.theme.PrimaryTextButton
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 //Previously we extend AppCompatActivity,
 //now we extend ComponentActivity
@@ -51,7 +63,10 @@ class MainActivity : ComponentActivity() {
                             //and set it as the color of the surface
                             color = MaterialTheme.colorScheme.background
                 ) {
-                    Home()
+                    val navController = rememberNavController()
+                    App(
+                        navController = navController
+                    )
                 }
             }
         }
@@ -60,7 +75,35 @@ class MainActivity : ComponentActivity() {
 data class Student(
     var name: String
 )
+//Here, we create a composable function called App
+//This will be the root composable of the app
+@Composable
+fun App(navController: NavHostController) {
+    //Here, we use NavHost to create a navigation graph
+    //We pass the navController as a parameter
+    //We also set the startDestination to "home"
+    //This means that the app will start with the Home composable
+    NavHost(
+        navController = navController,
+        startDestination = "home"
+    ) {
+        composable("home") {
+            Home {
+                navController.navigate("resultContent/?listData=$it")
+            }
+        }
 
+        composable(
+            "resultContent/?listData={listData}",
+            arguments = listOf(navArgument("listData") {
+                type = NavType.StringType
+            })
+        ) {
+            val jsonString = it.arguments?.getString("listData") ?: ""
+            ResultContent(jsonString)
+        }
+    }
+}
 
 //Notice that we remove the @Preview annotation
 //this is because we're passing a parameter into the composable
@@ -69,99 +112,85 @@ data class Student(
 //So, we create another composable function called PreviewHome
 //and we pass the list as a parameter
 @Composable
-fun Home() {
-    //Here, we create a mutable state list of Student
-    //We use remember to make the list remember its value
-    //This is so that the list won't be recreated when the composable recomposes
-    //We use mutableStateListOf to make the list mutable
-    //This is so that we can add or remove items from the list
-    //If you're still confused, this is basically the same concept as using
-    //useState in React
+fun Home(navigateFromHomeToResult: (String) -> Unit) {
+
     val listData = remember { mutableStateListOf(
         Student("Tanu"),
         Student("Tina"),
         Student("Tono")
-    )}
-    //Here, we create a mutable state of Student
-    //This is so that we can get the value of the input field
-    var inputField = remember { mutableStateOf(Student("")) }
-    //We call the HomeContent composable
-    //Here, we pass:
-    //listData to show the list of items inside HomeContent
-    //inputField to show the input field value inside HomeContent
-    //A lambda function to update the value of the inputField
-    //A lambda function to add the inputField to the listData
+    ) }
+
+    var inputField = remember { mutableStateOf("") }
+
     HomeContent(
-        listData,
-        inputField.value,
-        { input -> inputField.value = inputField.value.copy(input) },
-        {
-            if (inputField.value.name.isNotBlank()) {
-                listData.add(inputField.value)
-                inputField.value = Student("")
+        listData = listData,
+        inputField = inputField.value,
+        onInputValueChange = { inputField.value = it },
+        onButtonClick = {
+            if (inputField.value.isNotBlank()) {
+                listData.add(Student(inputField.value))
+                inputField.value = ""
             }
+        },
+        navigateFromHomeToResult = {
+            val moshi = Moshi.Builder()
+                .add(KotlinJsonAdapterFactory())
+                .build()
+            val type = Types.newParameterizedType(List::class.java, Student::class.java)
+            val adapter = moshi.adapter<List<Student>>(type)
+
+            val json = adapter.toJson(listData.toList())
+
+            val encodedJson = Uri.encode(json)
+
+            navigateFromHomeToResult(encodedJson)
         }
     )
 }
 
-//Here, we create a composable function called HomeContent
-//HomeContent is used to display the content of the Home composable
+
 @Composable
 fun HomeContent(
     listData: SnapshotStateList<Student>,
-    inputField: Student,
+    inputField: String,
     onInputValueChange: (String) -> Unit,
-    onButtonClick: () -> Unit
+    onButtonClick: () -> Unit,
+    navigateFromHomeToResult: () -> Unit
 ) {
-    //Here, we use LazyColumn to display a list of items lazily
     LazyColumn {
-        //Here, we use item to display an item inside the LazyColumn
         item {
             Column(
-                //Modifier.padding(16.dp) is used to add padding to the Column
-                //You can also use Modifier.padding(horizontal = 16.dp,vertical = 8.dp)
-                //to add padding horizontally and vertically
-                //or Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp)
-                //to add padding to each side
                 modifier = Modifier.padding(16.dp).fillMaxSize(),
-                //Alignment.CenterHorizontally is used to align the Column horizontally
-                //You can also use verticalArrangement = Arrangement.Center to align the Column vertically
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 OnBackgroundTitleText(
-                    text = stringResource(
-                        id = R.string.enter_item
-                    )
+                    text = stringResource(id = R.string.enter_item)
                 )
-                //Here, we use TextField to display a text input field
+
                 TextField(
-                    //Set the value of the input field
-                    value = inputField.name,
-                    //Set the keyboard type of the input field
+                    value = inputField,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Text
                     ),
-                    //Set what happens when the value of the input field changes
-                    onValueChange = {
-                        //Here, we call the onInputValueChange lambda function
-                        //and pass the value of the input field as a parameter
-                        //This is so that we can update the value of the
-                        inputField
-                        onInputValueChange(it)
-                    }
+                    onValueChange = { onInputValueChange(it) }
                 )
-                PrimaryTextButton(
-                    text = stringResource(
-                        id = R.string.button_click
-                    )
-                ) {
-                    onButtonClick()
+
+                Row {
+                    PrimaryTextButton(
+                        text = stringResource(id = R.string.button_click)
+                    ) {
+                        onButtonClick()
+                    }
+
+                    PrimaryTextButton(
+                        text = stringResource(id = R.string.button_navigate)
+                    ) {
+                        navigateFromHomeToResult()
+                    }
                 }
             }
         }
-        //Here, we use items to display a list of items inside the LazyColumn
-        //This is the RecyclerView replacement
-        //We pass the listData as a parameter
+
         items(listData) { item ->
             Column(
                 modifier = Modifier.padding(vertical = 4.dp).fillMaxSize(),
@@ -172,3 +201,40 @@ fun HomeContent(
         }
     }
 }
+
+//Here, we create a composable function called ResultContent
+//ResultContent accepts a String parameter called listData from the Home composable
+//then displays the value of listData to the screen
+@Composable
+fun ResultContent(listDataJson: String) {
+    val moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+    val type = Types.newParameterizedType(List::class.java, Student::class.java)
+    val adapter = moshi.adapter<List<Student>>(type)
+
+    val decodedJson = Uri.decode(listDataJson)
+
+    val listData = try {
+        adapter.fromJson(decodedJson).orEmpty()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    Column(
+        modifier = Modifier
+            .padding(16.dp)
+            .fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        OnBackgroundTitleText(text = "Result List")
+
+        LazyColumn {
+            items(listData) { item ->
+                OnBackgroundItemText(text = item.name)
+            }
+        }
+    }
+}
+
